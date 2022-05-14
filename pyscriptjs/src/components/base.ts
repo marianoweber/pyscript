@@ -1,5 +1,5 @@
 import { loadedEnvironments, mode, pyodideLoaded } from '../stores';
-import { guidGenerator, addClasses } from '../utils';
+import { guidGenerator, addClasses, removeClasses } from '../utils';
 // Premise used to connect to the first available pyodide interpreter
 let runtime;
 let environments;
@@ -32,6 +32,7 @@ export class BaseEvalElement extends HTMLElement {
     outputElement: HTMLElement;
     errorElement: HTMLElement;
     theme: string;
+    errorMode: boolean;
 
     constructor() {
         super();
@@ -40,11 +41,25 @@ export class BaseEvalElement extends HTMLElement {
         this.shadow = this.attachShadow({ mode: 'open' });
         this.wrapper = document.createElement('slot');
         this.shadow.appendChild(this.wrapper);
+        this.errorMode = false;
     }
 
     addToOutput(s: string) {
         this.outputElement.innerHTML += '<div>' + s + '</div>';
         this.outputElement.hidden = false;
+    }
+
+    setErrorMode(isErrorMode: boolean) {
+        if(this.errorMode && !isErrorMode) {
+            removeClasses(this.errorElement, ['bg-red-200', 'p-2']);
+            this.errorElement.innerText = '';
+
+            this.errorElement.style.display = 'none';
+            this.errorElement.hidden = true;
+        } else if (isErrorMode) {
+            addClasses(this.errorElement, ['bg-red-200', 'p-2']);
+        }
+        this.errorMode = isErrorMode;
     }
 
     // subclasses should overwrite this method to define custom logic
@@ -104,6 +119,8 @@ export class BaseEvalElement extends HTMLElement {
         let source: string;
         let output;
         try {
+            this.setErrorMode(false);
+
             if (this.source) {
                 source = await this.getSourceFromFile(this.source);
             } else {
@@ -139,12 +156,13 @@ export class BaseEvalElement extends HTMLElement {
 
             this.postEvaluate();
         } catch (err) {
+            this.setErrorMode(true);
+
             if (Element === undefined) {
                 Element = pyodide.globals.get('Element');
             }
             const out = Element(this.errorElement.id);
 
-            addClasses(this.errorElement, ['bg-red-200', 'p-2']);
             out.write.callKwargs(err, { append: true });
             this.errorElement.hidden = false;
             this.errorElement.style.display = 'block';
